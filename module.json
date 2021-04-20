@@ -1,0 +1,19 @@
+{
+	"name": "socketlib-test",
+	"title": "socketlib-test",
+	"description": "A module to test socketlib's functionality",
+	"version": "0.0.1",
+	"minimumCoreVersion" : "0.7.9",
+	"compatibleCoreVersion" : "0.7.9",
+	"authors": [
+		{
+			"name": "Manuel Vögele",
+			"email": "develop@manuel-voegele.de",
+			"discord": "Stäbchenfisch#5107"
+		}
+	],
+	"esmodules": [
+		"main.js"
+	],
+	"socket": true
+}

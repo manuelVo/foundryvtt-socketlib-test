@@ -32,6 +32,7 @@ Hooks.once("socketlib.ready", () => {
 	socket.register("result", reportResult);
 	socket.register("testExecuteAsGM", testExecuteAsGM);
 	socket.register("testExecuteForAllGMs", testExecuteForAllGMs);
+	socket.register("testThisValueRequest", testThisValueRequest);
 	socket.register("broadcastActivity", broadcastActivity);
 	socket.register("initializeUsers", initializeUsers);
 });
@@ -71,13 +72,24 @@ async function runTests() {
 		testExecuteForAllGMsFromUser,
 		testExecuteForOthers,
 		testExecuteForOtherGMs,
-		testTransferringNoParams,
-		testTransferringOneParam,
-		testTransferringTwoParams,
+		testTransferringNoParamsCommandLocal,
+		testTransferringNoParamsCommandRemote,
+		testTransferringNoParamsRequestLocal,
+		testTransferringNoParamsRequestRemote,
+		testTransferringOneParamCommandLocal,
+		testTransferringOneParamCommandRemote,
+		testTransferringOneParamRequestLocal,
+		testTransferringOneParamRequestRemote,
+		testTransferringTwoParamsCommandLocal,
+		testTransferringTwoParamsCommandRemote,
+		testTransferringTwoParamsRequestLocal,
+		testTransferringTwoParamsRequestRemote,
 		testThisValueCommandRemote,
 		testThisValueCommandLocal,
 		testThisValueRequestRemote,
 		testThisValueRequestLocal,
+		testThisValueAsGMFromGM,
+		testThisValueFromOtherUser,
 		testExecuteForEveryoneSurvivesErroringFunction,
 		testExecuteForAllGMsSurvivesErroringFunction,
 		testExecuteForUsersSurvivesErroringFunctionLocal,
@@ -90,6 +102,7 @@ async function runTests() {
 	for (const [i, test] of tests.entries()) {
 		const msg = `(${i + 1}/${tests.length}) ${test.name} `;
 		try {
+			await game.socket.emit(`Test ${test.name}`);
 			const result = await test();
 			if (result === true) {
 				console.log(msg + "success");
@@ -259,44 +272,86 @@ async function testExecuteForOtherGMs() {
 	return true;
 }
 
-async function testTransferringNoParams() {
-	const user = otherUsers[0];
+
+async function testTransferringParams(func, params, user, invokeOverSocket) {
 	await socket.executeForEveryone(initTest);
-	await socket.executeAsUser(invokeWithoutParams, user.id);
+	await invokeOverSocket(func, user.id, params);
 	const result = await socket.executeAsUser(reportResult, user.id);
-	if (!(result.args instanceof Array) || result.args.length !== 0)
+	if (!(result.args instanceof Array) || result.args.length !== params.length)
 		return result;
+	for (let i = 0;i < params.length;i++) {
+		if (result.args[i] !== params[i])
+			return result;
+	}
 	return true;
 }
 
-async function testTransferringOneParam() {
-	const user = otherUsers[0];
-	const parameterValue = "foobar";
-	await socket.executeForEveryone(initTest);
-	await socket.executeAsUser(invokeWith1Parameter, user.id, parameterValue);
-	const result = await socket.executeAsUser(reportResult, user.id);
-	if (!(result.args instanceof Array) || result.args.length !== 1 || result.args[0] !== parameterValue)
-		return result;
-	return true;
+function testTransferringNoParams(user, invokeOverSocket) {
+	return testTransferringParams(invokeWithoutParams, [], user, invokeOverSocket);
 }
 
-async function testTransferringTwoParams() {
-	const user = otherUsers[0];
-	const parameterValues = ["foo", "bar"];
-	await socket.executeForEveryone(initTest);
-	await socket.executeAsUser(invokeWith2Parameters, user.id, parameterValues[0], parameterValues[1]);
-	const result = await socket.executeAsUser(reportResult, user.id);
-	if (!(result.args instanceof Array) || result.args.length !== 2 || result.args[0] !== parameterValues[0] || result.args[1] !== parameterValues[1])
-		return result;
-	return true;
+function testTransferringNoParamsCommandLocal() {
+	return testTransferringNoParams(game.user, sendCommand);
+}
+
+function testTransferringNoParamsCommandRemote() {
+	return testTransferringNoParams(otherUsers[0], sendCommand);
+}
+
+function testTransferringNoParamsRequestLocal() {
+	return testTransferringNoParams(game.user, sendRequest);
+}
+
+function testTransferringNoParamsRequestRemote() {
+	return testTransferringNoParams(otherUsers[0], sendRequest);
+}
+
+function testTransferringOneParam(user, invokeOverSocket) {
+	return testTransferringParams(invokeWith1Parameter, ["foobar"], user, invokeOverSocket);
+}
+
+function testTransferringOneParamCommandLocal() {
+	return testTransferringOneParam(game.user, sendCommand);
+}
+
+function testTransferringOneParamCommandRemote() {
+	return testTransferringOneParam(otherUsers[0], sendCommand);
+}
+
+function testTransferringOneParamRequestLocal() {
+	return testTransferringOneParam(game.user, sendRequest);
+}
+
+function testTransferringOneParamRequestRemote() {
+	return testTransferringOneParam(otherUsers[0], sendRequest);
+}
+
+function testTransferringTwoParams(user, invokeOverSocket) {
+	return testTransferringParams(invokeWith2Parameters, ["foo", "bar"], user, invokeOverSocket);
+}
+
+function testTransferringTwoParamsCommandLocal() {
+	return testTransferringTwoParams(game.user, sendCommand);
+}
+
+function testTransferringTwoParamsCommandRemote() {
+	return testTransferringTwoParams(otherUsers[0], sendCommand);
+}
+
+function testTransferringTwoParamsRequestLocal() {
+	return testTransferringTwoParams(game.user, sendRequest);
+}
+
+function testTransferringTwoParamsRequestRemote() {
+	return testTransferringTwoParams(otherUsers[0], sendRequest);
 }
 
 async function testThisValue(user, invokeOverSocket) {
 	await socket.executeForEveryone(initTest);
 	await invokeOverSocket(invokeWithoutParams, user.id);
 	const result = await socket.executeAsUser(reportResult, user.id);
-	if (result._this !== undefined)
-		return result;
+	if (result._this.socketdata.userId !== game.user.id)
+		return serializeResult(result);
 	return true;
 }
 
@@ -308,20 +363,28 @@ function testThisValueRequest(user) {
 	return testThisValue(user, sendRequest);
 }
 
-function testThisValueCommandRemote() {
-	return testThisValueCommand(otherUsers[0]);
+async function testThisValueAsGMFromGM() {
+	return deserializeResult(await testThisValue(game.user, executeAsGM));
 }
 
-function testThisValueCommandLocal() {
-	return testThisValueCommand(game.user);
+async function testThisValueCommandRemote() {
+	return deserializeResult(await testThisValueCommand(otherUsers[0]));
 }
 
-function testThisValueRequestRemote() {
-	return testThisValueRequest(otherUsers[0]);
+async function testThisValueCommandLocal() {
+	return deserializeResult(await testThisValueCommand(game.user));
 }
 
-function testThisValueRequestLocal() {
-	return testThisValueRequest(game.user);
+async function testThisValueRequestRemote() {
+	return deserializeResult(await testThisValueRequest(otherUsers[0]));
+}
+
+async function testThisValueRequestLocal() {
+	return deserializeResult(await testThisValueRequest(game.user));
+}
+
+async function testThisValueFromOtherUser() {
+	return deserializeResult(await socket.executeAsUser(testThisValueRequest, otherUsers[0].id, {id: game.userId}));
 }
 
 async function testCommandSurvivesErroringFunction(invokeOverSocket) {
@@ -366,12 +429,16 @@ function testRequestErrorsOnErrorRemote() {
 	return testRequestErrorsOnError(otherUsers[0]);
 }
 
-function sendCommand(func, userId) {
-	return socket.executeForUsers(func, [userId]);
+function sendCommand(func, userId, params=[]) {
+	return socket.executeForUsers(func, [userId], ...params);
 }
 
-function sendRequest(func, userId) {
-	return socket.executeAsUser(func, userId);
+function sendRequest(func, userId, params=[]) {
+	return socket.executeAsUser(func, userId, ...params);
+}
+
+function executeAsGM(func, userId, params=[]) {
+	return socket.executeAsGM(func, ...params);
 }
 
 function initTest() {
@@ -442,6 +509,8 @@ function sleep(milliseconds) {
 function serializeResult(result) {
 	if (result === true)
 		return true;
+	if (!result.executingUser)
+		return result;
 	const serialized = {executingUser: result.executingUser};
 	serialized.results = Array.from(result.results.entries());
 	return serialized;
@@ -450,8 +519,11 @@ function serializeResult(result) {
 function deserializeResult(result) {
 	if (result === true)
 		return true;
+	if (!result.executingUser)
+		return result;
 	const deserialized = {executingUser: result.executingUser};
 	const map = new Map();
+	console.warn(result);
 	for (let [key, value] of result.results) {
 		if (value === null)
 			value = undefined;
